@@ -1,0 +1,27 @@
+{
+    "schemes": [
+        {
+            "background": "#1A2332",
+            "black": "#000000",
+            "blue": "#004CFF",
+            "brightBlack": "#666666",
+            "brightBlue": "#5CB2FF",
+            "brightCyan": "#5CECC6",
+            "brightGreen": "#C5F467",
+            "brightPurple": "#C16CFA",
+            "brightRed": "#FF8484",
+            "brightWhite": "#FFFFFF",
+            "brightYellow": "#FFCC5C",
+            "cursorColor": "#313F55",
+            "cyan": "#2EE7B6",
+            "foreground": "#A4B1CD",
+            "green": "#9FEF00",
+            "name": "HackTheBox",
+            "purple": "#9F00FF",
+            "red": "#FF3E3E",
+            "selectionBackground": "#313F55",
+            "white": "#FFFFFF",
+            "yellow": "#FFAF00"
+        }
+    ]
+}

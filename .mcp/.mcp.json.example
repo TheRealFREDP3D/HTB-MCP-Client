@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "htb-mcp-ctf": {
+            "command": "uvx",
+            "args": [
+                "mcp-proxy",
+                "--transport",
+                "streamablehttp",
+                "https://mcp.hackthebox.ai/v1/ctf/mcp/"
+            ],
+            "env": {
+                "API_ACCESS_TOKEN": ""
+            }
+        }
+    }
+}

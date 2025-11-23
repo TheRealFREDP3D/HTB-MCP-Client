@@ -1,0 +1,10 @@
+/.env
+/.mcp/.mcp.json
+/MCP.code-workspace
+/.dev
+/verify_tui.py
+/.kilocode
+/__pycache__
+/.media
+/temp
+test_schema_gen.py
