@@ -72,3 +72,5 @@ htb_mcp_output/
 # Development files (patterns cover these)
 # test files -> test_*.py pattern above
 # state files -> htb_mcp_output/ pattern above
+/htb_mcp_output/retrieve_ctf-20251123_132842.json
+/htb_mcp_state.json
