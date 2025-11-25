@@ -984,11 +984,9 @@ class EventSelectionScreen(Screen):
         md += f"**ID**: {event.get('id', 'N/A')}\\n"
         md += f"**Status**: {event.get('status', 'N/A')}\\n"
         md += f"**Type**: {event.get('type', 'N/A')}\\n\\n"
-        
-        desc = event.get('description', '')
-        if desc:
-             md += f"### Description\\n{desc}\\n"
-        
+
+        if desc := event.get('description', ''):
+            md += f"### Description\\n{desc}\\n"
         self.markdown_content = md
         self.query_one("#event_details").update(md)
 
