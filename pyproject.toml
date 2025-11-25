@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "htb-mcp-client"
+version = "1.0.0"
+description = "A Textual TUI client for the HackTheBox Model Context Protocol server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Fred P3D", email = "noreply@therealfredp3d.github.io" }
+]
+keywords = ["hackthebox", "mcp", "ctf", "tui", "security"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Shells",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.0.0",
+    "textual>=0.70.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/therealfredp3d/HTB-MCP-Client"
+"Bug Tracker" = "https://github.com/therealfredp3d/HTB-MCP-Client/issues"
+"Source Code" = "https://github.com/therealfredp3d/HTB-MCP-Client"
+
+[project.scripts]
+htb-mcp = "htb_mcp_client:main"
+
+[tool.setuptools]
+py-modules = ["htb_mcp_client"]
