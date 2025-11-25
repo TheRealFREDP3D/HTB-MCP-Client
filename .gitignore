@@ -68,5 +68,7 @@ htb_mcp_output/
 # Editor backups
 *.bak
 *.tmp
-/test_schema_gen.py
-test_retrieve_ctf.py
+
+# Development files (patterns cover these)
+# test files -> test_*.py pattern above
+# state files -> htb_mcp_output/ pattern above

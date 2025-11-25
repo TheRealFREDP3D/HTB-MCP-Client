@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "Fred P3D", email = "fred@example.com" }
+    { name = "Fred P3D", email = "noreply@therealfredp3d.github.io" }
 ]
 keywords = ["hackthebox", "mcp", "ctf", "tui", "security"]
 classifiers = [

@@ -1,0 +1,91 @@
+{
+  "selected_event": {
+    "id": 2712,
+    "name": "Neurogrid CTF: The ultimate AI security showdown",
+    "isHtbOrganizer": false,
+    "starts_at": "2025-11-20T17:00:00.000000Z",
+    "ends_at": "2025-11-24T00:00:00.000000Z",
+    "status": "Ongoing",
+    "isPaused": false,
+    "hide_scoreboard": 0,
+    "banner": "https://s3.eu-central-1.amazonaws.com/htb-ctf-prod-public-storage/ctf/banners/a5pNhjWV2BTDwdjJjSzNm10oOeEsqMHk7CEdQ9q5.jpg",
+    "hasCode": null,
+    "private": 0,
+    "university": false,
+    "isBusiness": false,
+    "isUni": false,
+    "players": 154,
+    "team_size": 1,
+    "slug": "neurogrid-ctf-the-ultimate-ai-security-showdown-2712",
+    "format": "Jeopardy",
+    "avatars": [],
+    "featured": true,
+    "mcp_access_mode": "only_mcp",
+    "hide_organization_info": false,
+    "org_name": "hackthebox.ai",
+    "isHost": false,
+    "canPlay": true,
+    "canJoin": true,
+    "userCanViewScoreboard": 1,
+    "view_analytics": true,
+    "hasJoined": 1,
+    "joinedTeam": "[AI] ai-agent-of-therealfredp3d",
+    "joinedTeamAvatar": "https://s3.eu-central-1.amazonaws.com/htb-ctf-prod-public-storage/teams/5d1e8b4d-0d87-4e29-918f-3cb705144aa1-avatar.png",
+    "membersJoined": "1/1"
+  },
+  "selected_team": {
+    "id": 297813,
+    "name": "[AI] ai-agent-of-therealfredp3d",
+    "motto": "AI team for agent ai-agent-of-therealfredp3d",
+    "avatar": "https://s3.eu-central-1.amazonaws.com/htb-ctf-prod-public-storage/teams/5d1e8b4d-0d87-4e29-918f-3cb705144aa1-avatar.png",
+    "country_name": "World",
+    "country_code": "WO",
+    "discord_link": null,
+    "is_dormant": 0,
+    "numberOfMembers": 1,
+    "isCaptain": 1,
+    "numberOfPwns": 0,
+    "isPending": false,
+    "joinedMembers": [
+      {
+        "id": 966975,
+        "name": "ai-agent-of-therealfredp3d"
+      }
+    ],
+    "type": null
+  },
+  "selected_challenge": {
+    "id": 63334,
+    "name": "Rice Field",
+    "creator": "ch4p",
+    "description": "Takashi, the fearless blade of the East, weary from countless battles, now seeks not war—but warmth. His body aches, his spirit hungers. Upon the road, he discovers a sacred haven: the legendary Rice Field Restaurant, known across the land for its peerless grains. But here, the rice is not served—it is earned. Guide Takashi as he prepares his own perfect bowl, to restore his strength and walk the path once more.",
+    "challenge_category_id": 3,
+    "difficulty": "very easy",
+    "filename": "pwn_rice_field.zip",
+    "hasDocker": 1,
+    "docker_online": 1,
+    "docker_ports": [
+      30586
+    ],
+    "docker_instance_type": "TCP",
+    "points": 900,
+    "solves": 24,
+    "hostname": "154.57.164.75",
+    "new": 0,
+    "hasMachine": null,
+    "flagsInfo": [
+      {
+        "flag_id": 783589,
+        "identifier": null,
+        "question": "",
+        "solved": false
+      }
+    ],
+    "machine": null,
+    "status": null,
+    "solved": false,
+    "team_solves": []
+  },
+  "challenges_cache": [],
+  "container_status": null
+}

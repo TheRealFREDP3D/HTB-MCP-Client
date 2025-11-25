@@ -26,7 +26,6 @@ try:
     from mcp.client.streamable_http import streamablehttp_client
     from mcp.types import Tool, Resource, Prompt
     from dotenv import dotenv_values
-    import pyfiglet
     
     from textual.app import App, ComposeResult
     from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
@@ -52,6 +51,33 @@ class HTBMCPClient:
         self.session = session
         self.output_dir = Path("htb_mcp_output")
         self.output_dir.mkdir(exist_ok=True)
+        self.state_file = Path("htb_mcp_state.json")
+        self.state = {
+            "selected_event": None,
+            "selected_team": None,
+            "selected_challenge": None,
+            "challenges_cache": [],
+            "container_status": None
+        }
+        self.load_state()
+
+    def load_state(self):
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, "r", encoding="utf-8") as f:
+                    loaded_state = json.load(f)
+                    self.state.update(loaded_state)
+            except Exception:
+                # Silently continue with default state if loading fails
+                pass
+
+    def save_state(self):
+        try:
+            with open(self.state_file, "w", encoding="utf-8") as f:
+                json.dump(self.state, f, indent=2, ensure_ascii=False)
+        except Exception:
+            # Silently continue if state saving fails
+            pass
 
     async def list_tools(self) -> List[Tool]:
         result = await self.session.list_tools()
@@ -81,80 +107,6 @@ class HTBMCPClient:
             else:
                 f.write(str(data))
         return str(filepath.absolute())
-
-
-class MainMenu(Screen):
-    """The main menu screen."""
-    
-    def compose(self) -> ComposeResult:
-        yield Header()
-        
-        # ASCII art banner (centered above the box)
-        # Using HackTheBox green (#9FEF00) from settings.json
-        ascii_banner = """\033[38;2;159;239;0m
-┓┏┏┳┓┳┓  ┳┳┓┏┓┏┓  ┏┓┓ ┳┏┓┳┓┏┳┓
-┣┫ ┃ ┣┫━━┃┃┃┃ ┃┃  ┃ ┃ ┃┣ ┃┃ ┃ 
-┛┗ ┻ ┻┛  ┛ ┗┗┛┣┛  ┗┛┗┛┻┗┛┛┗ ┻ 
-\033[0m"""
-        
-        # Wrap everything in a Vertical container for centering
-        yield Vertical(
-            Static(ascii_banner, id="ascii_banner"),
-            Container(
-                Label("", id="ids_display", classes="description"),
-                Button("List Tools", id="btn_tools", variant="primary"),
-                Button("List Resources", id="btn_resources", variant="primary"),
-                Button("Call Tool", id="btn_call_tool", variant="success"),
-                Button("Read Resource", id="btn_read_resource", variant="warning"),
-                Button("Exit", id="btn_exit", variant="error"),
-                id="main_menu_container"
-            ),
-            id="main_menu_wrapper"
-        )
-        yield Footer()
-
-    def on_mount(self):
-        self.update_ids_display()
-
-    def update_ids_display(self):
-        # Get current IDs or use ***
-        event_id = "***"
-        team_id = "***"
-        challenge_id = "***"
-        
-        if hasattr(self.app, 'selected_event') and self.app.selected_event:
-            event_id = str(self.app.selected_event.get('id', '***'))
-        
-        if hasattr(self.app, 'selected_team') and self.app.selected_team:
-            team_id = str(self.app.selected_team.get('id', '***'))
-        
-        if hasattr(self.app, 'selected_challenge') and self.app.selected_challenge:
-            challenge_id = str(self.app.selected_challenge.get('id', '***'))
-        
-        self.query_one("#ids_display").update(
-            f"Event ID: {event_id} | Team ID: {team_id} | Challenge ID: {challenge_id}"
-        )
-
-    @on(Button.Pressed, "#btn_tools")
-    def show_tools(self):
-        self.app.push_screen("tools_list")
-
-    @on(Button.Pressed, "#btn_resources")
-    def show_resources(self):
-        self.app.push_screen("resources_list")
-
-    @on(Button.Pressed, "#btn_call_tool")
-    def call_tool(self):
-        self.app.push_screen("tool_selection")
-
-    @on(Button.Pressed, "#btn_read_resource")
-    def read_resource(self):
-        # Simple input for URI for now
-        self.app.push_screen("resource_input")
-
-    @on(Button.Pressed, "#btn_exit")
-    def exit_app(self):
-        self.app.exit()
 
 
 class DataListScreen(Screen):
@@ -274,9 +226,10 @@ class ToolSelectionScreen(Screen):
 class ToolExecutionScreen(Screen):
     """Screen to input arguments and execute a tool."""
 
-    def __init__(self, tool: Tool):
+    def __init__(self, tool: Tool, auto_exec_args: Optional[Dict] = None):
         super().__init__()
         self.tool = tool
+        self.auto_exec_args = auto_exec_args or {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -327,9 +280,23 @@ class ToolExecutionScreen(Screen):
             # Table might not exist if no args
             pass
 
-        # Auto-execute if requested (e.g. list_ctf_events)
-        if self.tool.name == "list_ctf_events":
-            self.execute_tool()
+        # Auto-execute if requested (e.g. list_ctf_events or passed auto_exec_args)
+        if self.tool.name == "list_ctf_events" or self.auto_exec_args:
+            # If auto_exec_args provided, ensure they are in the input box
+            if self.auto_exec_args:
+                 current_text = self.query_one("#args_input").text
+                 try:
+                     current_json = json.loads(current_text)
+                     current_json.update(self.auto_exec_args)
+                     self.query_one("#args_input").load_text(json.dumps(current_json, indent=2))
+                 except:
+                     pass
+            
+            # Only auto-execute if it's list_ctf_events OR we explicitly want to (maybe add a flag?)
+            # For now, let's auto-execute if it's list_ctf_events. 
+            # For start_container, user might want to review args.
+            if self.tool.name == "list_ctf_events":
+                self.execute_tool()
 
     def _generate_template_from_schema(self, schema: Dict[str, Any]) -> str:
         """Generates a JSON template string from the tool's input schema."""
@@ -342,13 +309,18 @@ class ToolExecutionScreen(Screen):
         
         # Check if we have a selected event to auto-fill from
         selected_event = getattr(self.app, "selected_event", None)
+        selected_challenge = getattr(self.app, "selected_challenge", None)
         
         for prop_name, prop_details in properties.items():
             value_placeholder = None
             prop_type = prop_details.get("type", "string")
             
+            # Use auto_exec_args if available
+            if prop_name in self.auto_exec_args:
+                value_placeholder = self.auto_exec_args[prop_name]
+            
             # Auto-fill logic for event IDs
-            if selected_event and prop_name in ["ctf_id", "id", "event_id"] and "id" in selected_event:
+            elif selected_event and prop_name in ["ctf_id", "id", "event_id"] and "id" in selected_event:
                  event_id = selected_event["id"]
                  if prop_type == "integer":
                      try:
@@ -357,6 +329,18 @@ class ToolExecutionScreen(Screen):
                          value_placeholder = 0
                  else:
                      value_placeholder = str(event_id)
+            
+            # Auto-fill logic for challenge IDs
+            elif selected_challenge and prop_name in ["challenge_id", "id"] and "id" in selected_challenge:
+                 challenge_id = selected_challenge["id"]
+                 if prop_type == "integer":
+                     try:
+                         value_placeholder = int(challenge_id)
+                     except (ValueError, TypeError):
+                         value_placeholder = 0
+                 else:
+                     value_placeholder = str(challenge_id)
+
             elif "default" in prop_details:
                 value_placeholder = prop_details["default"]
             elif prop_type == "string":
@@ -396,9 +380,24 @@ class ToolExecutionScreen(Screen):
     async def run_tool(self, args):
         try:
             result = await self.app.client.call_tool(self.tool.name, args)
-            # Show result - use EventSelectionScreen for CTF events
+            
+            # Handle specific tool results
             if self.tool.name == "list_ctf_events":
                 self.app.push_screen(EventSelectionScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
+            elif self.tool.name == "retrieve_ctf":
+                self.app.push_screen(ChallengeSelectionScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
+            elif self.tool.name == "retrieve_my_teams":
+                self.app.push_screen(TeamSelectionScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
+            elif self.tool.name == "start_container":
+                # Parse result to get IP/Port if available
+                # Assuming result content has text with IP/Port or success message
+                # For now, just notify and maybe update status if we can parse it
+                # If success, return to main menu
+                self.app.notify("Container started!", severity="information")
+                # TODO: Parse actual IP/Port from result
+                # self.app.container_status = {"ip": "...", "port": "..."}
+                # self.app.save_app_state()
+                self.app.push_screen(ResultScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
             else:
                 self.app.push_screen(ResultScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
         except Exception as e:
@@ -409,6 +408,478 @@ class ToolExecutionScreen(Screen):
 
     @on(Button.Pressed, "#btn_back")
     def go_back(self):
+        self.app.pop_screen()
+
+
+class ChallengeSelectionScreen(Screen):
+    """Screen to display Challenges with split-panel selection interface."""
+
+    CSS = """
+    #challenges_container {
+        layout: horizontal;
+        height: 1fr;
+    }
+    
+    #challenges_table {
+        width: 50%;
+    }
+    
+    #challenge_details {
+        width: 50%;
+        border: heavy #9FEF00;
+        padding: 1;
+    }
+    
+    #buttons_container {
+        width: 50%;
+        align: center middle;
+    }
+    """
+
+    def __init__(self, data: Any, title: str, tool_name: str = "tool"):
+        super().__init__()
+        self.data = data
+        self.page_title = title
+        self.tool_name = tool_name
+        self.challenges_data = []
+        self.markdown_content = ""
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Label(self.page_title, classes="screen_title")
+        
+        yield Horizontal(
+            DataTable(id="challenges_table"),
+            Markdown("", id="challenge_details"),
+            id="challenges_container"
+        )
+        
+        yield Container(
+            Button("Select Challenge", id="btn_select", variant="success"),
+            Button("Save to .json", id="btn_save_json", variant="primary"),
+            Button("Save to .md", id="btn_save_md", variant="primary"),
+            Button("Back", id="btn_back"),
+            id="buttons_container"
+        )
+        yield Footer()
+
+    def on_mount(self):
+        self.process_challenges()
+
+    @work
+    async def process_challenges(self):
+        # Extract challenges from data
+        try:
+            full_text = ""
+            if hasattr(self.data, "content") and isinstance(self.data.content, list):
+                for block in self.data.content:
+                    if hasattr(block, "type") and block.type == "text":
+                        full_text += block.text
+                    elif isinstance(block, str):
+                        full_text += block
+            
+            try:
+                parsed_json = json.loads(full_text)
+                # Check if it's a dict with "challenges" key or just a list
+                if isinstance(parsed_json, dict) and "challenges" in parsed_json:
+                    self.challenges_data = parsed_json["challenges"]
+                elif isinstance(parsed_json, list):
+                    self.challenges_data = parsed_json
+            except json.JSONDecodeError:
+                pass
+        except Exception:
+            pass
+
+        # Populate table
+        table = self.query_one("#challenges_table")
+        table.cursor_type = "row"
+        table.add_columns("ID", "Name", "Category", "Diff", "Pts", "Solved")
+        
+        for idx, chall in enumerate(self.challenges_data):
+            if isinstance(chall, dict):
+                c_id = str(chall.get('id', ''))
+                name = chall.get('name', 'Unknown')
+                cat = str(chall.get('challenge_category_id', '')) # Map to name if possible, but ID is safer for now
+                diff = chall.get('difficulty', '')
+                pts = str(chall.get('points', ''))
+                solved = "Yes" if chall.get('solved') else "No"
+                
+                table.add_row(c_id, name, cat, diff, pts, solved, key=str(idx))
+        
+        # Focus the table
+        table.focus()
+        
+        # Show first challenge if available
+        if self.challenges_data:
+            self.display_challenge_details(self.challenges_data[0])
+
+    def display_challenge_details(self, chall: dict):
+        """Display details of selected challenge in right panel."""
+        md = f"## 🚩 {chall.get('name', 'Unknown')}\\n\\n"
+        md += f"**ID**: {chall.get('id', 'N/A')}\\n\\n"
+        md += f"**Difficulty**: {chall.get('difficulty', 'N/A')}\\n\\n"
+        md += f"**Points**: {chall.get('points', 'N/A')}\\n\\n"
+        md += f"**Solved**: {chall.get('solved', False)}\\n\\n"
+        
+        desc = chall.get('description', '')
+        if desc:
+             md += f"### Description\\n{desc}\\n\\n"
+        
+        # Docker info
+        if chall.get('hasDocker'):
+            md += "### 🐳 Docker Info\\n"
+            md += f"- **Image**: `{chall.get('docker_image', 'N/A')}`\\n"
+            md += f"- **Port**: `{chall.get('docker_port', 'N/A')}`\\n\\n"
+
+        # Files
+        filename = chall.get('filename', '')
+        if filename:
+            md += f"### 📁 Files\\n- `{filename}`\\n\\n"
+
+        md += "### Additional Details\\n\\n"
+        for k, v in chall.items():
+            if k not in ["name", "id", "difficulty", "points", "solved", "description", "hasDocker", "docker_image", "docker_port", "filename"]:
+                md += f"- **{k}**: `{v}`\\n"
+        
+        self.markdown_content = md
+        self.query_one("#challenge_details").update(md)
+
+    @on(DataTable.RowHighlighted)
+    def on_row_highlighted(self, event: DataTable.RowHighlighted):
+        """Update details when user navigates the list."""
+        if event.row_key:
+            idx = int(event.row_key.value)
+            if 0 <= idx < len(self.challenges_data):
+                self.display_challenge_details(self.challenges_data[idx])
+
+    @on(Button.Pressed, "#btn_select")
+    def select_challenge(self):
+        """Select the highlighted challenge and return to main menu."""
+        table = self.query_one("#challenges_table")
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(self.challenges_data):
+            selected = self.challenges_data[table.cursor_row]
+            # Store in app state and save
+            self.app.selected_challenge = selected
+            self.app.save_app_state()
+            self.app.notify(f"Selected Challenge: {selected.get('name')}", severity="information")
+            # Return to main menu by switching screen
+            self.app.switch_screen("main_menu")
+            # Update the IDs display on main menu
+            main_menu = self.app.get_screen("main_menu")
+            if hasattr(main_menu, 'update_display'):
+                main_menu.update_display()
+
+    @on(Button.Pressed, "#btn_save_json")
+    def save_json(self):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.tool_name}-{timestamp}.json"
+        try:
+            to_save = self.data.model_dump() if hasattr(self.data, "model_dump") else self.data
+            path = self.app.client.save_to_file(to_save, filename)
+            self.app.notify(f"Saved JSON to {path}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Save failed: {e}", severity="error")
+
+    @on(Button.Pressed, "#btn_save_md")
+    def save_md(self):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.tool_name}-{timestamp}.md"
+        try:
+            path = self.app.client.save_to_file(self.markdown_content, filename)
+            self.app.notify(f"Saved Markdown to {path}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Save failed: {e}", severity="error")
+
+    @on(Button.Pressed, "#btn_back")
+    def go_back(self):
+        self.app.pop_screen()
+
+
+class PlayPage(Screen):
+    """Screen for the main 'Play' flow."""
+
+    CSS = """
+    #play_container {
+        layout: horizontal;
+        height: 1fr;
+    }
+    
+    #challenges_list {
+        width: 30%;
+        border-right: heavy #9FEF00;
+    }
+    
+    #play_details {
+        width: 70%;
+        padding: 1;
+    }
+    
+    #play_actions {
+        height: auto;
+        align: center middle;
+        padding: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Label("Play Mode", classes="screen_title")
+        
+        yield Horizontal(
+            Vertical(
+                Label("Challenges", classes="label"),
+                DataTable(id="play_challenges_table"),
+                id="challenges_list"
+            ),
+            Vertical(
+                Markdown("", id="play_markdown"),
+                Container(
+                    Button("Start Container", id="btn_start_container", variant="success"),
+                    Button("Stop Container", id="btn_stop_container", variant="error"),
+                    Button("Download Files", id="btn_download", variant="primary"),
+                    Button("Back to Menu", id="btn_back"),
+                    id="play_actions"
+                ),
+                id="play_details"
+            ),
+            id="play_container"
+        )
+        yield Footer()
+
+    def on_mount(self):
+        self.load_challenges()
+        self.display_current_challenge()
+
+    def load_challenges(self):
+        # Load challenges from cache or current selection context
+        table = self.query_one("#play_challenges_table")
+        table.cursor_type = "row"
+        table.clear()
+        table.add_columns("ID", "Name")
+        
+        # If we have a selected challenge, show it. 
+        if self.app.selected_challenge:
+            c_id = str(self.app.selected_challenge.get('id', ''))
+            name = self.app.selected_challenge.get('name', 'Unknown')
+            table.add_row(c_id, name, key="current")
+            
+        table.focus()
+
+    def display_current_challenge(self):
+        if self.app.selected_challenge:
+            chall = self.app.selected_challenge
+            md = f"# 🚩 {chall.get('name', 'Unknown')}\\n\\n"
+            md += f"**ID**: {chall.get('id', 'N/A')} | **Diff**: {chall.get('difficulty', 'N/A')} | **Pts**: {chall.get('points', 'N/A')}\\n\\n"
+            
+            desc = chall.get('description', '')
+            if desc:
+                 md += f"### Description\\n{desc}\\n\\n"
+            
+            # Docker info
+            if chall.get('hasDocker'):
+                md += "### 🐳 Docker Info\\n"
+                md += "Container required for this challenge.\\n"
+
+            # Files
+            filename = chall.get('filename', '')
+            if filename:
+                md += f"### 📁 Files\\n- `{filename}`\\n\\n"
+            
+            self.query_one("#play_markdown").update(md)
+
+    @on(Button.Pressed, "#btn_start_container")
+    def start_container(self):
+        if self.app.selected_challenge:
+            chall_id = self.app.selected_challenge.get("id")
+            # Auto-execute start_container tool
+            self.app.push_screen(ToolExecutionScreen(
+                Tool(name="start_container", description="Start a container", inputSchema={}),
+                auto_exec_args={"challenge_id": chall_id}
+            ))
+
+    @on(Button.Pressed, "#btn_stop_container")
+    def stop_container(self):
+        # Auto-execute stop_container tool
+        self.app.push_screen(ToolExecutionScreen(
+            Tool(name="stop_container", description="Stop a container", inputSchema={}),
+            auto_exec_args={}
+        ))
+
+    @on(Button.Pressed, "#btn_download")
+    def download_files(self):
+        if self.app.selected_challenge:
+            chall_id = self.app.selected_challenge.get("id")
+            # Auto-execute download_challenge tool
+            self.app.push_screen(ToolExecutionScreen(
+                Tool(name="download_challenge", description="Download challenge files", inputSchema={}),
+                auto_exec_args={"challenge_id": chall_id}
+            ))
+
+    @on(Button.Pressed, "#btn_back")
+    def go_back(self):
+        self.app.switch_screen("main_menu")
+
+
+class TeamSelectionScreen(Screen):
+    """Screen to display Teams with split-panel selection interface."""
+
+    CSS = """
+    #teams_container {
+        layout: horizontal;
+        height: 1fr;
+    }
+    
+    #teams_table {
+        width: 50%;
+    }
+    
+    #team_details {
+        width: 50%;
+        border: heavy #9FEF00;
+        padding: 1;
+    }
+    
+    #buttons_container {
+        width: 50%;
+        align: center middle;
+    }
+    """
+
+    def __init__(self, data: Any, title: str, tool_name: str = "tool"):
+        super().__init__()
+        self.data = data
+        self.page_title = title
+        self.tool_name = tool_name
+        self.teams_data = []
+        self.markdown_content = ""
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Label(self.page_title, classes="screen_title")
+        
+        yield Horizontal(
+            DataTable(id="teams_table"),
+            Markdown("", id="team_details"),
+            id="teams_container"
+        )
+        
+        yield Container(
+            Button("Select Team", id="btn_select", variant="success"),
+            Button("Save to .json", id="btn_save_json", variant="primary"),
+            Button("Save to .md", id="btn_save_md", variant="primary"),
+            Button("Close", id="btn_close"),
+            id="buttons_container"
+        )
+        yield Footer()
+
+    def on_mount(self):
+        self.process_teams()
+
+    @work
+    async def process_teams(self):
+        # Extract teams from data
+        try:
+            full_text = ""
+            if hasattr(self.data, "content") and isinstance(self.data.content, list):
+                for block in self.data.content:
+                    if hasattr(block, "type") and block.type == "text":
+                        full_text += block.text
+                    elif isinstance(block, str):
+                        full_text += block
+            
+            try:
+                self.teams_data = json.loads(full_text)
+                if not isinstance(self.teams_data, list):
+                    self.teams_data = [self.teams_data]
+            except json.JSONDecodeError:
+                pass
+        except Exception:
+            pass
+
+        # Populate table
+        table = self.query_one("#teams_table")
+        table.cursor_type = "row"
+        table.add_columns("ID", "Name", "Captain")
+        
+        for idx, team in enumerate(self.teams_data):
+            if isinstance(team, dict):
+                t_id = str(team.get('id', ''))
+                name = team.get('name', 'Unknown')
+                captain = str(team.get('captain_id', 'Unknown'))
+                table.add_row(t_id, name, captain, key=str(idx))
+        
+        # Focus the table
+        table.focus()
+        
+        # Show first team if available
+        if self.teams_data:
+            self.display_team_details(self.teams_data[0])
+
+    def display_team_details(self, team: dict):
+        """Display details of selected team in right panel."""
+        md = f"## 🛡️ {team.get('name', 'Unknown')}\\n\\n"
+        md += f"**ID**: {team.get('id', 'N/A')}\\n"
+        md += f"**Captain ID**: {team.get('captain_id', 'N/A')}\\n\\n"
+        
+        md += "### Members\\n"
+        members = team.get('members', [])
+        if members:
+            for m in members:
+                md += f"- {m.get('name', 'Unknown')} (ID: {m.get('id', 'N/A')})\\n"
+        else:
+            md += "No members listed.\\n"
+        
+        self.markdown_content = md
+        self.query_one("#team_details").update(md)
+
+    @on(DataTable.RowHighlighted)
+    def on_row_highlighted(self, event: DataTable.RowHighlighted):
+        """Update details when user navigates the list."""
+        if event.row_key:
+            idx = int(event.row_key.value)
+            if 0 <= idx < len(self.teams_data):
+                self.display_team_details(self.teams_data[idx])
+
+    @on(Button.Pressed, "#btn_select")
+    def select_team(self):
+        """Select the highlighted team and return to main menu."""
+        table = self.query_one("#teams_table")
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(self.teams_data):
+            selected = self.teams_data[table.cursor_row]
+            # Store in app state and save
+            self.app.selected_team = selected
+            self.app.save_app_state()
+            self.app.notify(f"Selected Team: {selected.get('name')}", severity="information")
+            # Return to main menu by switching screen
+            self.app.switch_screen("main_menu")
+            # Update the IDs display on main menu
+            main_menu = self.app.get_screen("main_menu")
+            if hasattr(main_menu, 'update_display'):
+                main_menu.update_display()
+
+    @on(Button.Pressed, "#btn_save_json")
+    def save_json(self):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.tool_name}-{timestamp}.json"
+        try:
+            to_save = self.data.model_dump() if hasattr(self.data, "model_dump") else self.data
+            path = self.app.client.save_to_file(to_save, filename)
+            self.app.notify(f"Saved JSON to {path}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Save failed: {e}", severity="error")
+
+    @on(Button.Pressed, "#btn_save_md")
+    def save_md(self):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.tool_name}-{timestamp}.md"
+        try:
+            path = self.app.client.save_to_file(self.markdown_content, filename)
+            self.app.notify(f"Saved Markdown to {path}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Save failed: {e}", severity="error")
+
+    @on(Button.Pressed, "#btn_close")
+    def close(self):
         self.app.pop_screen()
 
 
@@ -423,31 +894,17 @@ class EventSelectionScreen(Screen):
     
     #events_table {
         width: 50%;
-        border: heavy #9FEF00;
-        background: #1A2332;
     }
     
     #event_details {
         width: 50%;
         border: heavy #9FEF00;
-        background: #1A2332;
-        color: #A4B1CD;
         padding: 1;
     }
     
     #buttons_container {
         width: 50%;
         align: center middle;
-    }
-    
-    Markdown {
-        background: #1A2332;
-        color: #A4B1CD;
-    }
-    Markdown H1, Markdown H2, Markdown H3 {
-        color: #9FEF00;
-        text-style: bold;
-        background: #1A2332;
     }
     """
 
@@ -485,31 +942,34 @@ class EventSelectionScreen(Screen):
     async def process_events(self):
         # Extract events from data
         try:
+            full_text = ""
             if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                full_text = ""
                 for block in self.data.content:
                     if hasattr(block, "type") and block.type == "text":
                         full_text += block.text
                     elif isinstance(block, str):
                         full_text += block
-                
-                try:
-                    parsed_json = json.loads(full_text)
-                    if isinstance(parsed_json, list):
-                        self.events_data = parsed_json
-                except json.JSONDecodeError:
-                    pass
+            
+            try:
+                self.events_data = json.loads(full_text)
+                if not isinstance(self.events_data, list):
+                    self.events_data = [self.events_data]
+            except json.JSONDecodeError:
+                pass
         except Exception:
             pass
 
         # Populate table
         table = self.query_one("#events_table")
         table.cursor_type = "row"
-        table.add_columns("Event ID", "Event Name")
+        table.add_columns("ID", "Name", "Status")
         
         for idx, event in enumerate(self.events_data):
-            if isinstance(event, dict) and "id" in event and "name" in event:
-                table.add_row(str(event.get('id')), event.get('name'), key=str(idx))
+            if isinstance(event, dict):
+                e_id = str(event.get('id', ''))
+                name = event.get('name', 'Unknown')
+                status = event.get('status', 'Unknown')
+                table.add_row(e_id, name, status, key=str(idx))
         
         # Focus the table
         table.focus()
@@ -520,17 +980,14 @@ class EventSelectionScreen(Screen):
 
     def display_event_details(self, event: dict):
         """Display details of selected event in right panel."""
-        md = f"## 🚩 {event.get('name', 'Unknown')}\\n\\n"
-        md += f"**Event ID**: {event.get('id', 'N/A')}\\n\\n"
-        md += f"**Status**: {event.get('status', 'N/A')}\\n\\n"
-        md += f"**Format**: {event.get('format', 'N/A')}\\n\\n"
-        md += f"**Starts**: {event.get('starts_at', 'N/A')}\\n\\n"
-        md += f"**Ends**: {event.get('ends_at', 'N/A')}\\n\\n"
+        md = f"## {event.get('name', 'Unknown')}\\n\\n"
+        md += f"**ID**: {event.get('id', 'N/A')}\\n"
+        md += f"**Status**: {event.get('status', 'N/A')}\\n"
+        md += f"**Type**: {event.get('type', 'N/A')}\\n\\n"
         
-        md += "### Additional Details\\n\\n"
-        for k, v in event.items():
-            if k not in ["name", "id", "status", "format", "starts_at", "ends_at"]:
-                md += f"- **{k}**: `{v}`\\n"
+        desc = event.get('description', '')
+        if desc:
+             md += f"### Description\\n{desc}\\n"
         
         self.markdown_content = md
         self.query_one("#event_details").update(md)
@@ -549,15 +1006,16 @@ class EventSelectionScreen(Screen):
         table = self.query_one("#events_table")
         if table.cursor_row is not None and 0 <= table.cursor_row < len(self.events_data):
             selected = self.events_data[table.cursor_row]
-            # Store in app state
+            # Store in app state and save
             self.app.selected_event = selected
-            self.app.notify(f"Selected: {selected.get('name')}", severity="information")
+            self.app.save_app_state()
+            self.app.notify(f"Selected Event: {selected.get('name')}", severity="information")
             # Return to main menu by switching screen
             self.app.switch_screen("main_menu")
             # Update the IDs display on main menu
             main_menu = self.app.get_screen("main_menu")
-            if hasattr(main_menu, 'update_ids_display'):
-                main_menu.update_ids_display()
+            if hasattr(main_menu, 'update_display'):
+                main_menu.update_display()
 
     @on(Button.Pressed, "#btn_save_json")
     def save_json(self):
@@ -600,32 +1058,7 @@ class EventSelectionScreen(Screen):
 
 
 class ResultScreen(Screen):
-    """Screen to display results with a typewriter animation."""
-
-    CSS = """
-    #result_markdown {
-        height: 1fr;
-        border: solid $accent;
-        background: #0c0c0c;
-        color: #20C20E; /* Hacker Green */
-        padding: 1;
-    }
-    
-    /* Force markdown styles to match hacker theme */
-    Markdown {
-        background: #0c0c0c;
-        color: #20C20E;
-    }
-    Markdown H1, Markdown H2, Markdown H3 {
-        color: #00ff00;
-        text-style: bold;
-        background: #0c0c0c;
-    }
-    Markdown CodeBlock {
-        background: #1a1a1a;
-        color: #00ff00;
-    }
-    """
+    """Screen to display results."""
 
     def __init__(self, data: Any, title: str, tool_name: str = "tool"):
         super().__init__()
@@ -639,7 +1072,6 @@ class ResultScreen(Screen):
         yield Label(self.page_title, classes="screen_title")
         
         # Container for the result - using Markdown for rich text
-        # Markdown widgets are focusable by default (arrows/pgup/pgdn)
         yield Markdown("", id="result_markdown")
         
         yield Container(
@@ -651,65 +1083,41 @@ class ResultScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-                md += "\n---\n"
-                return md
-            
-            # Generic dict formatting
+        self.markdown_content = self._json_to_markdown(self.data)
+        self.query_one("#result_markdown").update(self.markdown_content)
+
+    def _json_to_markdown(self, data: Any, indent_level: int = 0) -> str:
+        """Recursively convert JSON/Dict data to Markdown."""
+        indent = "  " * indent_level
+        
+        if isinstance(data, dict):
             if not data:
-                return f"{indent}_empty object_\n"
+                return f"{indent}_empty object_\\n"
             
             md = ""
             for k, v in data.items():
-                if isinstance(v, dict):
-                    md += f"{indent}- **{k}**:\n{self._json_to_markdown(v, indent_level + 1)}"
-                elif isinstance(v, list):
-                    md += f"{indent}- **{k}**:\n{self._json_to_markdown(v, indent_level + 1)}"
+                if isinstance(v, (dict, list)):
+                    md += f"{indent}- **{k}**:\\n{self._json_to_markdown(v, indent_level + 1)}"
                 elif v is None:
-                    md += f"{indent}- **{k}**: `null`\n"
-                elif isinstance(v, bool):
-                    md += f"{indent}- **{k}**: `{str(v).lower()}`\n"
-                elif isinstance(v, (int, float)):
-                    md += f"{indent}- **{k}**: `{v}`\n"
+                    md += f"{indent}- **{k}**: `null`\\n"
                 else:
-                    # String or other
-                    md += f"{indent}- **{k}**: {v}\n"
+                    md += f"{indent}- **{k}**: `{v}`\\n"
             return md
             
         elif isinstance(data, list):
             if not data:
-                return f"{indent}_empty list_\n"
+                return f"{indent}_empty list_\\n"
             
             md = ""
-            for idx, item in enumerate(data):
-                if isinstance(item, dict):
-                    # For dict items in a list, show index if not at top level
-                    if indent_level > 0:
-                        md += f"{indent}- **Item {idx + 1}**:\n{self._json_to_markdown(item, indent_level + 1)}"
-                    else:
-                        # Top-level list items get special treatment
-                        md += self._json_to_markdown(item, indent_level)
-                elif isinstance(item, list):
-                    md += f"{indent}- **[{idx}]**:\n{self._json_to_markdown(item, indent_level + 1)}"
-                elif item is None:
-                    md += f"{indent}- `null`\n"
-                elif isinstance(item, bool):
-                    md += f"{indent}- `{str(item).lower()}`\n"
-                elif isinstance(item, (int, float)):
-                    md += f"{indent}- `{item}`\n"
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    md += f"{indent}- \\n{self._json_to_markdown(item, indent_level + 1)}"
                 else:
-                    md += f"{indent}- {item}\n"
+                    md += f"{indent}- `{item}`\\n"
             return md
             
         else:
-            # Primitive values
-            if data is None:
-                return f"{indent}`null`\n"
-            elif isinstance(data, bool):
-                return f"{indent}`{str(data).lower()}`\n"
-            elif isinstance(data, (int, float)):
-                return f"{indent}`{data}`\n"
-            else:
-                return f"{indent}{data}\n"
+            return f"{indent}`{data}`\\n"
 
     @on(Button.Pressed, "#btn_save_json")
     def save_json(self):
@@ -737,6 +1145,7 @@ class ResultScreen(Screen):
     @on(Button.Pressed, "#btn_close")
     def close(self):
         self.app.pop_screen()
+
 
 
 class ResourceInputScreen(Screen):
@@ -781,7 +1190,7 @@ class HTBMCPApp(App):
     TITLE = "HackTheBox MCP Client"
     
     CSS = """
-    /* HackTheBox Color Theme from settings.json */
+    /* HackTheBox Color Theme */
     Screen {
         align: center middle;
         background: #1A2332;
@@ -789,8 +1198,11 @@ class HTBMCPApp(App):
     
     * {
         color: #A4B1CD;
+        scrollbar-background: #1A2332;
+        scrollbar-color: #9FEF00;
     }
     
+    /* Main Menu Container */
     #main_menu_container {
         width: 75;
         height: auto;
@@ -815,158 +1227,159 @@ class HTBMCPApp(App):
         text-align: center;
         width: 100%;
         color: #5CB2FF;
+        text-style: bold;
+        margin-bottom: 1;
     }
     
+    /* Buttons */
     Button {
         width: 100%;
         margin-bottom: 1;
         border: solid #313F55;
+        background: #1A2332;
+        color: #A4B1CD;
+    }
+    
+    Button:hover {
+        background: #313F55;
+        border: solid #9FEF00;
+        color: #9FEF00;
     }
     
     Button.-primary {
-        background: #5CB2FF;
-        color: #000000;
-        border: solid #7FC4FF;
+        border: solid #5CB2FF;
+        color: #5CB2FF;
     }
     
     Button.-primary:hover {
-        background: #7FC4FF;
-        color: #000000;
+        background: #5CB2FF;
+        color: #1A2332;
     }
     
     Button.-success {
-        background: #2EE7B6;
-        color: #000000;
-        border: solid #5CECC6;
+        border: solid #9FEF00;
+        color: #9FEF00;
     }
     
     Button.-success:hover {
-        background: #5CECC6;
-        color: #000000;
+        background: #9FEF00;
+        color: #1A2332;
     }
     
     Button.-warning {
-        background: #FFAF00;
-        color: #000000;
-        border: solid #FFCC5C;
+        border: solid #FFAF00;
+        color: #FFAF00;
     }
     
     Button.-warning:hover {
-        background: #FFCC5C;
-        color: #000000;
+        background: #FFAF00;
+        color: #1A2332;
     }
     
     Button.-error {
-        background: #FF3E3E;
-        color: #FFFFFF;
-        border: solid #FF8484;
+        border: solid #FF3E3E;
+        color: #FF3E3E;
     }
     
     Button.-error:hover {
-        background: #FF8484;
+        background: #FF3E3E;
         color: #FFFFFF;
     }
     
+    /* Titles */
     .screen_title {
         text-align: center;
         text-style: bold;
         margin: 1 0;
         width: 100%;
         color: #9FEF00;
+        background: #1A2332;
+        border-bottom: solid #9FEF00;
+        padding-bottom: 1;
     }
     
+    /* Data Tables */
     DataTable {
         height: 1fr;
         border: heavy #9FEF00;
         background: #1A2332;
+        margin: 1;
     }
     
-    /* Column Headers - the titles row */
     DataTable > .datatable--header {
         background: #313F55;
         color: #9FEF00;
         text-style: bold;
         border-bottom: wide #9FEF00;
-        height: 3;
     }
     
     DataTable > .datatable--header-cell {
         text-align: center;
         text-style: bold;
+        color: #9FEF00;
     }
     
-    /* Data cells - should be normal size and centered */
     DataTable > .datatable--cell {
         text-align: center;
+        color: #A4B1CD;
     }
     
-    /* Cursor (selected row) */
     DataTable > .datatable--cursor {
-        background: #9FEF00 30%;
-        color: #FFFFFF;
+        background: #9FEF00;
+        color: #1A2332;
         text-style: bold;
     }
     
-    /* Alternating row colors - gray tones */
     DataTable > .datatable--odd-row {
-        background: #313F55;
+        background: #1A2332;
     }
     
     DataTable > .datatable--even-row {
-        background: #1C2332;
+        background: #1E293B;
     }
     
-    /* Alternative: use :odd and :even pseudo-classes */
-    DataTable > .datatable--row:odd {
-        background: #313F55;
-    }
-    
-    DataTable > .datatable--row:even {
-        background: #1C2332;
-    }
-    
-    DataTable > .datatable--fixed {
-        border-right: solid #313F55;
-    }
-    
-    /* Focused cursor */
-    DataTable:focus > .datatable--cursor {
-        background: #9FEF00;
-        color: #000000;
-    }
-    
+    /* Inputs and TextAreas */
     TextArea {
         height: 1fr;
         border: heavy #9FEF00;
         background: #1A2332;
+        color: #A4B1CD;
+        margin: 1;
     }
     
     Input {
         border: heavy #9FEF00;
         background: #1A2332;
+        color: #A4B1CD;
+        margin: 1;
     }
     
     Input:focus {
-        border: heavy #9FEF00;
+        border: heavy #5CB2FF;
     }
     
     Select {
         border: heavy #9FEF00;
         background: #1A2332;
+        margin: 1;
     }
     
     Select:focus {
-        border: heavy #9FEF00;
+        border: heavy #5CB2FF;
     }
     
+    /* Markdown */
     Markdown {
         background: #1A2332;
         color: #A4B1CD;
+        padding: 1;
     }
     
     Markdown H1, Markdown H2, Markdown H3 {
         color: #9FEF00;
         text-style: bold;
+        background: #1A2332;
+        border-bottom: solid #313F55;
     }
     
     Markdown Code {
@@ -975,44 +1388,62 @@ class HTBMCPApp(App):
     }
     
     Markdown CodeBlock {
-        background: #313F55;
+        background: #0F141E;
         color: #A4B1CD;
+        border: solid #313F55;
     }
     
+    /* Layout Utilities */
     .buttons_row {
         height: auto;
         align: center middle;
         layout: horizontal;
         margin-top: 1;
+        background: #1A2332;
     }
     
     .buttons_row Button {
         width: auto;
         margin: 0 1;
+        min-width: 15;
     }
     
     .description {
         margin-bottom: 1;
         color: #5CB2FF;
+        text-align: center;
     }
     
     .label {
         margin-top: 1;
-        color: #A4B1CD;
+        color: #9FEF00;
+        text-style: bold;
+        margin-left: 1;
     }
     
+    /* Header and Footer */
     Header {
         background: #313F55;
         color: #9FEF00;
+        height: 3;
+        dock: top;
     }
     
     Footer {
         background: #313F55;
         color: #A4B1CD;
+        dock: bottom;
+        height: 1;
     }
     
     Footer > .footer--key {
         color: #9FEF00;
+        background: #313F55;
+    }
+    
+    Footer > .footer--highlight {
+        background: #5CB2FF;
+        color: #1A2332;
     }
     """
 
@@ -1024,7 +1455,11 @@ class HTBMCPApp(App):
     def __init__(self, client: HTBMCPClient):
         super().__init__()
         self.client = client
-        self.selected_event = None  # Store selected CTF event
+        # Load state from client
+        self.selected_event = self.client.state.get("selected_event")
+        self.selected_team = self.client.state.get("selected_team")
+        self.selected_challenge = self.client.state.get("selected_challenge")
+        self.container_status = self.client.state.get("container_status")
 
     def on_mount(self):
         self.install_screen(MainMenu(), name="main_menu")
@@ -1032,7 +1467,98 @@ class HTBMCPApp(App):
         self.install_screen(DataListScreen("Available Resources", "resources"), name="resources_list")
         self.install_screen(ToolSelectionScreen(), name="tool_selection")
         self.install_screen(ResourceInputScreen(), name="resource_input")
+        self.install_screen(PlayPage(), name="play_page")
         self.push_screen("main_menu")
+
+    def save_app_state(self):
+        """Sync app state back to client and save to disk."""
+        self.client.state["selected_event"] = self.selected_event
+        self.client.state["selected_team"] = self.selected_team
+        self.client.state["selected_challenge"] = self.selected_challenge
+        self.client.state["container_status"] = self.container_status
+        self.client.save_state()
+
+
+class MainMenu(Screen):
+    """The main menu screen."""
+    
+    def compose(self) -> ComposeResult:
+        yield Header()
+        
+        # ASCII art banner (centered above the box)
+        ascii_banner = """\033[38;2;159;239;0m
+ ┓┏┏┳┓┳┓  ┳┳┓┏┓┏┓  ┏┓┓ ┳┏┓┳┓┏┳┓
+ ┣┫ ┃ ┣┫━━┃┃┃┃ ┃┃  ┃ ┃ ┃┣ ┃┃ ┃ 
+ ┛┗ ┻ ┻┛  ┛ ┗┗┛┣┛  ┗┛┗┛┻┗┛┛┗ ┻ 
+\033[0m"""
+        
+        yield Vertical(
+            Static(ascii_banner, id="ascii_banner"),
+            Container(
+                Label("", id="ids_display", classes="description"),
+                Label("", id="container_display", classes="description"),
+                Button("PLAY", id="btn_play", variant="success", disabled=True),
+                Button("List Tools", id="btn_tools", variant="primary"),
+                Button("List Resources", id="btn_resources", variant="primary"),
+                Button("Call Tool", id="btn_call_tool", variant="success"),
+                Button("Read Resource", id="btn_read_resource", variant="warning"),
+                Button("Exit", id="btn_exit", variant="error"),
+                id="main_menu_container"
+            ),
+            id="main_menu_wrapper"
+        )
+        yield Footer()
+
+    def on_mount(self):
+        self.update_display()
+
+    def update_display(self):
+        # Update IDs display
+        event_name = self.app.selected_event.get('name', 'None') if self.app.selected_event else "None"
+        team_name = self.app.selected_team.get('name', 'None') if self.app.selected_team else "None"
+        chall_name = self.app.selected_challenge.get('name', 'None') if self.app.selected_challenge else "None"
+        
+        self.query_one("#ids_display").update(
+            f"Event: {event_name} | Team: {team_name} | Challenge: {chall_name}"
+        )
+
+        # Update Container Status
+        if self.app.container_status:
+            ip = self.app.container_status.get("ip", "Unknown")
+            port = self.app.container_status.get("port", "Unknown")
+            self.query_one("#container_display").update(f"ACTIVE CONTAINER: {ip}:{port}")
+            self.query_one("#container_display").styles.color = "#9FEF00"
+        else:
+            self.query_one("#container_display").update("No Active Container")
+            self.query_one("#container_display").styles.color = "#A4B1CD"
+
+        # Enable Play button if everything is selected
+        can_play = all([self.app.selected_event, self.app.selected_team, self.app.selected_challenge])
+        self.query_one("#btn_play").disabled = not can_play
+
+    @on(Button.Pressed, "#btn_play")
+    def on_play(self):
+        self.app.push_screen("play_page")
+
+    @on(Button.Pressed, "#btn_tools")
+    def show_tools(self):
+        self.app.push_screen("tools_list")
+
+    @on(Button.Pressed, "#btn_resources")
+    def show_resources(self):
+        self.app.push_screen("resources_list")
+
+    @on(Button.Pressed, "#btn_call_tool")
+    def call_tool(self):
+        self.app.push_screen("tool_selection")
+
+    @on(Button.Pressed, "#btn_read_resource")
+    def read_resource(self):
+        self.app.push_screen("resource_input")
+
+    @on(Button.Pressed, "#btn_exit")
+    def exit_app(self):
+        self.app.exit()
 
 
 async def main():

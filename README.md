@@ -1,12 +1,12 @@
 # HackTheBox MCP Client
 
+![Header](doc/Header.png)
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/therealfredp3d/HTB-MCP-Client)
 
 A **Textual TUI** (Terminal User Interface) client for the HackTheBox Model Context Protocol (MCP) server. Browse CTF events and challenges, execute tools, and manage resources with a sleek, interactive terminal interface.
-
-![Main Screen](main-screen.png)
 
 ## ✨ Features
 
@@ -15,7 +15,7 @@ A **Textual TUI** (Terminal User Interface) client for the HackTheBox Model Cont
 - 🔧 **Tool Execution** - Execute HackTheBox MCP tools with guided argument input
 - 📊 **Data Tables** - View tools, resources, and arguments in organized tables
 - 💾 **Export Functionality** - Save results to JSON or Markdown files
-- 🎨 **Hacker Theme** - Green-on-black aesthetic with typewriter animations
+- 🎨 **Hacker Theme** - Green-on-black aesthetic
 - ⚡ **Auto-fill** - Automatically populate tool arguments from selected events/challenges
 - 🔄 **State Management** - Persistent selection across screens
 - 📖 **Resource Management** - Read and browse MCP resources
@@ -78,7 +78,9 @@ python htb_mcp_client.py
 python htb_mcp_client.py --version
 ```
 
-## 🎮 TUI Interface Guide
+### 🎮 TUI Interface Guide
+
+![Main Menu](doc/main-menu.png)
 
 ### Main Menu
 
@@ -101,6 +103,8 @@ The main menu provides quick access to all major features:
 
 ### Event Selection
 
+![Event Selection](doc/event-list.png)
+
 When you list CTF events:
 
 1. Left panel shows Event IDs and Names
@@ -111,6 +115,8 @@ When you list CTF events:
 
 ### Challenge Selection
 
+![Challenge Selection](doc/retrieve_ctf.png)
+
 Similar to event selection:
 
 1. Browse challenges in a table (ID, Name, Difficulty, Points)
@@ -119,12 +125,16 @@ Similar to event selection:
 
 ### Tool Execution
 
+![Tool Execution](doc/tools.png)
+
 1. Select a tool from the dropdown
 2. View the argument schema in a table
 3. Edit the JSON arguments (pre-filled template provided)
 4. Click "Execute" to run the tool
-5. Results appear with typewriter animation
+5. Results appear in the result screen
 6. Save results as JSON or Markdown
+
+![Retrieve Team](doc/retrieve-team.png)
 
 ### Exporting Data
 
@@ -137,7 +147,7 @@ Files are saved to `htb_mcp_output/` directory.
 
 ## 📦 Project Structure
 
-```
+```text
 HTB-MCP-Client/
 ├── htb_mcp_client.py    # Main TUI application
 ├── requirements.txt     # Python dependencies
@@ -167,10 +177,10 @@ pip install -e .
 
 The client supports configuration via environment variables or `.env` file:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `API_ACCESS_TOKEN` | **Yes** | - | Your HackTheBox API JWT token |
-| `HTB_MCP_URL` | No | `https://mcp.hackthebox.ai/v1/ctf/mcp/` | MCP server endpoint |
+| Variable           | Required | Default                                 | Description                   |
+| ------------------ | -------- | --------------------------------------- | ----------------------------- |
+| `API_ACCESS_TOKEN` | **Yes**  | -                                       | Your HackTheBox API JWT token |
+| `HTB_MCP_URL`      | No       | `https://mcp.hackthebox.ai/v1/ctf/mcp/` | MCP server endpoint           |
 
 ## 🐛 Troubleshooting
 
@@ -228,4 +238,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ by Fred P3D**
+### Made with ❤️ by Fred P3D

@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-11-23
+## [1.0.0] - 2025-11-25
 
 ### Added
+
 - **Textual TUI Interface** - Complete rewrite from CLI to Terminal User Interface
 - **Event Selection Screen** - Split-panel interface for browsing and selecting CTF events
   - Left panel: Event list with ID and Name
@@ -45,11 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic challenge data loading from saved files
 
 ### Changed
+
 - Migrated from CLI to Textual TUI framework
 - Replaced InquirerPy prompts with native Textual widgets
 - Improved visual design with custom CSS styling
 
 ### Technical Details
+
 - Python 3.10+ required
 - Dependencies: mcp, httpx, python-dotenv, textual
 - Configuration via `.env` file
