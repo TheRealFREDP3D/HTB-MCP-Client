@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """
-HackTheBox MCP Client (TUI Version)
+HackTheBox MCP Client
 A Textual-based TUI client for the HackTheBox Model Context Protocol server.
+
+Provides an interactive terminal interface for browsing CTF events and challenges,
+executing tools, and managing resources from the HackTheBox MCP API.
 """
 
+__version__ = "1.0.0"
+__author__ = "Fred P3D"
+__license__ = "MIT"
+
+
 import asyncio
+import argparse
 import os
 import sys
 import json
@@ -17,6 +26,7 @@ try:
     from mcp.client.streamable_http import streamablehttp_client
     from mcp.types import Tool, Resource, Prompt
     from dotenv import dotenv_values
+    import pyfiglet
     
     from textual.app import App, ComposeResult
     from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
@@ -78,30 +88,52 @@ class MainMenu(Screen):
     
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Container(
-            Label("HackTheBox MCP Client", id="title"),
-            Label("", id="selected_event_label", classes="description"),
-            Button("List Tools", id="btn_tools", variant="primary"),
-            Button("List Resources", id="btn_resources", variant="primary"),
-            Button("Challenges", id="btn_challenges", variant="primary"),
-            Button("Call Tool", id="btn_call_tool", variant="success"),
-            Button("Read Resource", id="btn_read_resource", variant="warning"),
-            Button("Exit", id="btn_exit", variant="error"),
-            id="main_menu_container"
+        
+        # ASCII art banner (centered above the box)
+        # Using HackTheBox green (#9FEF00) from settings.json
+        ascii_banner = """\033[38;2;159;239;0m
+┓┏┏┳┓┳┓  ┳┳┓┏┓┏┓  ┏┓┓ ┳┏┓┳┓┏┳┓
+┣┫ ┃ ┣┫━━┃┃┃┃ ┃┃  ┃ ┃ ┃┣ ┃┃ ┃ 
+┛┗ ┻ ┻┛  ┛ ┗┗┛┣┛  ┗┛┗┛┻┗┛┛┗ ┻ 
+\033[0m"""
+        
+        # Wrap everything in a Vertical container for centering
+        yield Vertical(
+            Static(ascii_banner, id="ascii_banner"),
+            Container(
+                Label("", id="ids_display", classes="description"),
+                Button("List Tools", id="btn_tools", variant="primary"),
+                Button("List Resources", id="btn_resources", variant="primary"),
+                Button("Call Tool", id="btn_call_tool", variant="success"),
+                Button("Read Resource", id="btn_read_resource", variant="warning"),
+                Button("Exit", id="btn_exit", variant="error"),
+                id="main_menu_container"
+            ),
+            id="main_menu_wrapper"
         )
         yield Footer()
 
     def on_mount(self):
-        self.update_selected_event_display()
+        self.update_ids_display()
 
-    def update_selected_event_display(self):
+    def update_ids_display(self):
+        # Get current IDs or use ***
+        event_id = "***"
+        team_id = "***"
+        challenge_id = "***"
+        
         if hasattr(self.app, 'selected_event') and self.app.selected_event:
-            event = self.app.selected_event
-            self.query_one("#selected_event_label").update(
-                f"🎯 Selected: {event.get('name', 'Unknown')} (ID: {event.get('id', 'N/A')})"
-            )
-        else:
-            self.query_one("#selected_event_label").update("")
+            event_id = str(self.app.selected_event.get('id', '***'))
+        
+        if hasattr(self.app, 'selected_team') and self.app.selected_team:
+            team_id = str(self.app.selected_team.get('id', '***'))
+        
+        if hasattr(self.app, 'selected_challenge') and self.app.selected_challenge:
+            challenge_id = str(self.app.selected_challenge.get('id', '***'))
+        
+        self.query_one("#ids_display").update(
+            f"Event ID: {event_id} | Team ID: {team_id} | Challenge ID: {challenge_id}"
+        )
 
     @on(Button.Pressed, "#btn_tools")
     def show_tools(self):
@@ -110,13 +142,6 @@ class MainMenu(Screen):
     @on(Button.Pressed, "#btn_resources")
     def show_resources(self):
         self.app.push_screen("resources_list")
-
-    @on(Button.Pressed, "#btn_challenges")
-    def show_challenges(self):
-        if hasattr(self.app, "stored_challenges") and self.app.stored_challenges:
-             self.app.push_screen(ChallengeSelectionScreen(self.app.stored_challenges, "Stored Challenges", "stored"))
-        else:
-             self.app.notify("No challenges stored yet. Call 'retrieve_ctf' or similar tool first.", severity="warning")
 
     @on(Button.Pressed, "#btn_call_tool")
     def call_tool(self):
@@ -332,16 +357,6 @@ class ToolExecutionScreen(Screen):
                          value_placeholder = 0
                  else:
                      value_placeholder = str(event_id)
-            # Auto-fill logic for challenge IDs
-            elif hasattr(self.app, "selected_challenge") and self.app.selected_challenge and prop_name in ["challenge_id", "id"] and "id" in self.app.selected_challenge:
-                 challenge_id = self.app.selected_challenge["id"]
-                 if prop_type == "integer":
-                     try:
-                         value_placeholder = int(challenge_id)
-                     except (ValueError, TypeError):
-                         value_placeholder = 0
-                 else:
-                     value_placeholder = str(challenge_id)
             elif "default" in prop_details:
                 value_placeholder = prop_details["default"]
             elif prop_type == "string":
@@ -384,29 +399,6 @@ class ToolExecutionScreen(Screen):
             # Show result - use EventSelectionScreen for CTF events
             if self.tool.name == "list_ctf_events":
                 self.app.push_screen(EventSelectionScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
-            elif self.tool.name in ["get_challenges", "list_challenges", "retrieve_ctf"]:
-                # Save challenges automatically
-                try:
-                    # Attempt to parse and save
-                    content_to_save = result
-                    if hasattr(result, "content") and isinstance(result.content, list):
-                        full_text = ""
-                        for block in result.content:
-                            if hasattr(block, "type") and block.type == "text":
-                                full_text += block.text
-                            elif isinstance(block, str):
-                                full_text += block
-                        try:
-                             # Verify it's JSON before saving as challenges
-                             json.loads(full_text)
-                             self.app.client.save_to_file(result, "challenges.json")
-                             self.app.stored_challenges = result
-                        except json.JSONDecodeError:
-                             pass
-                except Exception:
-                    pass
-                
-                self.app.push_screen(ChallengeSelectionScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
             else:
                 self.app.push_screen(ResultScreen(result, f"Tool Result: {self.tool.name}", self.tool.name))
         except Exception as e:
@@ -430,27 +422,32 @@ class EventSelectionScreen(Screen):
     }
     
     #events_table {
-        width: 40%;
-        border: solid $accent;
-        background: #0c0c0c;
+        width: 50%;
+        border: heavy #9FEF00;
+        background: #1A2332;
     }
     
     #event_details {
-        width: 60%;
-        border: solid $accent;
-        background: #0c0c0c;
-        color: #20C20E;
+        width: 50%;
+        border: heavy #9FEF00;
+        background: #1A2332;
+        color: #A4B1CD;
         padding: 1;
     }
     
+    #buttons_container {
+        width: 50%;
+        align: center middle;
+    }
+    
     Markdown {
-        background: #0c0c0c;
-        color: #20C20E;
+        background: #1A2332;
+        color: #A4B1CD;
     }
     Markdown H1, Markdown H2, Markdown H3 {
-        color: #00ff00;
+        color: #9FEF00;
         text-style: bold;
-        background: #0c0c0c;
+        background: #1A2332;
     }
     """
 
@@ -477,7 +474,7 @@ class EventSelectionScreen(Screen):
             Button("Save to .json", id="btn_save_json", variant="primary"),
             Button("Save to .md", id="btn_save_md", variant="primary"),
             Button("Close", id="btn_close"),
-            classes="buttons_row"
+            id="buttons_container"
         )
         yield Footer()
 
@@ -555,10 +552,12 @@ class EventSelectionScreen(Screen):
             # Store in app state
             self.app.selected_event = selected
             self.app.notify(f"Selected: {selected.get('name')}", severity="information")
-            # Return to main menu and update display
-            self.app.pop_screen()  # Close this screen
-            if hasattr(self.app.screen, 'update_selected_event_display'):
-                self.app.screen.update_selected_event_display()
+            # Return to main menu by switching screen
+            self.app.switch_screen("main_menu")
+            # Update the IDs display on main menu
+            main_menu = self.app.get_screen("main_menu")
+            if hasattr(main_menu, 'update_ids_display'):
+                main_menu.update_ids_display()
 
     @on(Button.Pressed, "#btn_save_json")
     def save_json(self):
@@ -592,213 +591,6 @@ class EventSelectionScreen(Screen):
             
             path = self.app.client.save_to_file(full_md, filename)
             self.app.notify(f"Saved Markdown to {path}", severity="information")
-        except Exception as e:
-            self.app.notify(f"Save failed: {e}", severity="error")
-
-    @on(Button.Pressed, "#btn_close")
-    def close(self):
-        self.app.pop_screen()
-
-
-class ChallengeSelectionScreen(Screen):
-    """Screen to display Challenges with split-panel selection interface."""
-
-    CSS = """
-    #challenges_container {
-        layout: horizontal;
-        height: 1fr;
-    }
-    
-    #challenges_table {
-        width: 40%;
-        border: solid $accent;
-        background: #0c0c0c;
-    }
-    
-    #challenge_details {
-        width: 60%;
-        border: solid $accent;
-        background: #0c0c0c;
-        color: #20C20E;
-        padding: 1;
-    }
-    
-    Markdown {
-        background: #0c0c0c;
-        color: #20C20E;
-    }
-    Markdown H1, Markdown H2, Markdown H3 {
-        color: #00ff00;
-        text-style: bold;
-        background: #0c0c0c;
-    }
-    """
-
-    def __init__(self, data: Any, title: str, tool_name: str = "tool"):
-        super().__init__()
-        self.data = data
-        self.page_title = title
-        self.tool_name = tool_name
-        self.challenges_data = []
-        self.markdown_content = ""
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Label(self.page_title, classes="screen_title")
-        
-        yield Horizontal(
-            DataTable(id="challenges_table"),
-            Markdown("", id="challenge_details"),
-            id="challenges_container"
-        )
-        
-        yield Container(
-            Button("Select Challenge", id="btn_select", variant="success"),
-            Button("Save to .json", id="btn_save_json", variant="primary"),
-            Button("Save to .md", id="btn_save_md", variant="primary"),
-            Button("Close", id="btn_close"),
-            classes="buttons_row"
-        )
-        yield Footer()
-
-    def on_mount(self):
-        self.process_challenges()
-
-    @work
-    async def process_challenges(self):
-        # Extract challenges from data
-        try:
-            print(f"DEBUG: Data type: {type(self.data)}")
-            print(f"DEBUG: Has content attr: {hasattr(self.data, 'content')}")
-            
-            if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                full_text = ""
-                for block in self.data.content:
-                    if hasattr(block, "type") and block.type == "text":
-                        full_text += block.text
-                    elif isinstance(block, str):
-                        full_text += block
-                
-                print(f"DEBUG: Extracted text length: {len(full_text)}")
-                print(f"DEBUG: First 200 chars: {full_text[:200]}")
-                
-                try:
-                    parsed_json = json.loads(full_text)
-                    print(f"DEBUG: Parsed JSON type: {type(parsed_json)}")
-                    
-                    # Handle both list and dict formats
-                    if isinstance(parsed_json, list):
-                        self.challenges_data = parsed_json
-                    elif isinstance(parsed_json, dict):
-                        # Try common keys that might contain the challenges list
-                        for key in ['challenges', 'data', 'results', 'items']:
-                            if key in parsed_json and isinstance(parsed_json[key], list):
-                                self.challenges_data = parsed_json[key]
-                                print(f"DEBUG: Found challenges in '{key}' key")
-                                break
-                        else:
-                            # If no list found, maybe it's a single challenge wrapped in dict
-                            if 'id' in parsed_json and 'name' in parsed_json:
-                                self.challenges_data = [parsed_json]
-                                print("DEBUG: Treating single dict as one-item list")
-                    
-                    print(f"DEBUG: challenges_data length: {len(self.challenges_data)}")
-                except json.JSONDecodeError as e:
-                    print(f"DEBUG: JSON decode error: {e}")
-            else:
-                print("DEBUG: Data does not have expected content structure")
-        except Exception as e:
-            print(f"DEBUG: Exception in process_challenges: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # Populate table
-        table = self.query_one("#challenges_table")
-        table.cursor_type = "row"
-        table.add_columns("ID", "Name", "Difficulty", "Points")
-        
-        print(f"DEBUG: About to populate table with {len(self.challenges_data)} challenges")
-        for idx, challenge in enumerate(self.challenges_data):
-            if isinstance(challenge, dict) and "id" in challenge and "name" in challenge:
-                print(f"DEBUG: Adding row {idx}: {challenge.get('name')}")
-                table.add_row(
-                    str(challenge.get('id')), 
-                    challenge.get('name'), 
-                    challenge.get('difficulty', 'N/A'),
-                    str(challenge.get('points', 'N/A')),
-                    key=str(idx)
-                )
-            else:
-                print(f"DEBUG: Skipping invalid challenge at {idx}: {type(challenge)}")
-        
-        # Focus the table
-        table.focus()
-        
-        # Show first challenge if available
-        if self.challenges_data:
-            self.display_challenge_details(self.challenges_data[0])
-
-    def display_challenge_details(self, challenge: dict):
-        """Display details of selected challenge in right panel."""
-        md = f"## 🚩 {challenge.get('name', 'Unknown')}\\n\\n"
-        md += f"**ID**: {challenge.get('id', 'N/A')}\\n\\n"
-        md += f"**Difficulty**: {challenge.get('difficulty', 'N/A')}\\n\\n"
-        md += f"**Points**: {challenge.get('points', 'N/A')}\\n\\n"
-        md += f"**Category**: {challenge.get('category_name', 'N/A')}\\n\\n"
-        
-        if "description" in challenge:
-             md += f"### Description\\n\\n{challenge.get('description')}\\n\\n"
-
-        md += "### Additional Details\\n\\n"
-        for k, v in challenge.items():
-            if k not in ["name", "id", "difficulty", "points", "category_name", "description"]:
-                md += f"- **{k}**: `{v}`\\n"
-        
-        self.markdown_content = md
-        self.query_one("#challenge_details").update(md)
-
-    @on(DataTable.RowHighlighted)
-    def on_row_highlighted(self, event: DataTable.RowHighlighted):
-        """Update details when user navigates the list."""
-        if event.row_key:
-            idx = int(event.row_key.value)
-            if 0 <= idx < len(self.challenges_data):
-                self.display_challenge_details(self.challenges_data[idx])
-
-    @on(Button.Pressed, "#btn_select")
-    def select_challenge(self):
-        """Select the highlighted challenge and return to main menu."""
-        table = self.query_one("#challenges_table")
-        if table.cursor_row is not None and 0 <= table.cursor_row < len(self.challenges_data):
-            selected = self.challenges_data[table.cursor_row]
-            # Store in app state
-            self.app.selected_challenge = selected
-            self.app.notify(f"Selected: {selected.get('name')}", severity="information")
-            # Return to main menu and update display
-            self.app.pop_screen()  # Close this screen
-            if hasattr(self.app.screen, 'update_selected_event_display'):
-                self.app.screen.update_selected_event_display()
-
-    @on(Button.Pressed, "#btn_save_json")
-    def save_json(self):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self.tool_name}-{timestamp}.json"
-        try:
-            to_save = self.data.model_dump() if hasattr(self.data, "model_dump") else self.data
-            path = self.app.client.save_to_file(to_save, filename)
-            self.app.notify(f"Saved JSON to {path}", severity="information")
-            self.app.pop_screen()
-        except Exception as e:
-            self.app.notify(f"Save failed: {e}", severity="error")
-
-    @on(Button.Pressed, "#btn_save_md")
-    def save_md(self):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self.tool_name}-{timestamp}.md"
-        try:
-            path = self.app.client.save_to_file(self.markdown_content, filename)
-            self.app.notify(f"Saved Markdown to {path}", severity="information")
-            self.app.pop_screen()
         except Exception as e:
             self.app.notify(f"Save failed: {e}", severity="error")
 
@@ -859,83 +651,65 @@ class ResultScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-        self.process_and_animate()
-        # Focus the markdown widget so user can scroll immediately
-        self.query_one("#result_markdown").focus()
-
-    @work
-    async def process_and_animate(self):
-        # 1. Extract content
-        content_str = ""
-        try:
-            # Handle MCP CallToolResult
-            if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                # Concatenate text from all text content blocks
-                full_text = ""
-                for block in self.data.content:
-                    if hasattr(block, "type") and block.type == "text":
-                        full_text += block.text
-                    elif isinstance(block, str): # Fallback if it's just strings
-                        full_text += block
-                
-                # Try to parse this text as JSON (as seen in the screenshot)
-                try:
-                    parsed_json = json.loads(full_text)
-                    # Convert to Markdown
-                    content_str = self._json_to_markdown(parsed_json)
-                except json.JSONDecodeError:
-                    # Not JSON, just use the text
-                    content_str = full_text
-            else:
-                # Fallback for other data types
-                content_str = str(self.data)
-        except Exception as e:
-            content_str = f"Error processing result: {e}\n\nRaw Data:\n{self.data}"
-
-        self.markdown_content = content_str
-
-        # 2. Animate
-        markdown_widget = self.query_one("#result_markdown")
-        lines = content_str.splitlines()
-        current_text = ""
-        
-        for line in lines:
-            current_text += line + "\n"
-            # Update the markdown widget
-            markdown_widget.update(current_text)
-            await asyncio.sleep(0.05) # Typewriter speed
-
-    def _json_to_markdown(self, data: Any) -> str:
-        # Helper to make it pretty
-        if isinstance(data, list):
-            md = ""
-            for item in data:
-                if isinstance(item, dict):
-                    # CTF Event specific formatting if detected
-                    if "name" in item and "id" in item:
-                        md += f"## 🚩 {item.get('name')} (ID: {item.get('id')})\n"
-                        md += f"**Status**: {item.get('status')} | **Format**: {item.get('format')}\n"
-                        md += f"**Date**: {item.get('starts_at')} to {item.get('ends_at')}\n"
-                        # Add other fields in a collapsed way or just list them
-                        md += "### Details\n"
-                        for k, v in item.items():
-                            if k not in ["name", "id", "status", "format", "starts_at", "ends_at"]:
-                                md += f"- **{k}**: `{v}`\n"
-                        md += "\n---\n"
-                    else:
-                        # Generic list item
-                        md += "### Item\n"
-                        for k, v in item.items():
-                            md += f"- **{k}**: `{v}`\n"
-                        md += "\n---\n"
-            return md
-        elif isinstance(data, dict):
+                md += "\n---\n"
+                return md
+            
+            # Generic dict formatting
+            if not data:
+                return f"{indent}_empty object_\n"
+            
             md = ""
             for k, v in data.items():
-                md += f"- **{k}**: `{v}`\n"
+                if isinstance(v, dict):
+                    md += f"{indent}- **{k}**:\n{self._json_to_markdown(v, indent_level + 1)}"
+                elif isinstance(v, list):
+                    md += f"{indent}- **{k}**:\n{self._json_to_markdown(v, indent_level + 1)}"
+                elif v is None:
+                    md += f"{indent}- **{k}**: `null`\n"
+                elif isinstance(v, bool):
+                    md += f"{indent}- **{k}**: `{str(v).lower()}`\n"
+                elif isinstance(v, (int, float)):
+                    md += f"{indent}- **{k}**: `{v}`\n"
+                else:
+                    # String or other
+                    md += f"{indent}- **{k}**: {v}\n"
             return md
+            
+        elif isinstance(data, list):
+            if not data:
+                return f"{indent}_empty list_\n"
+            
+            md = ""
+            for idx, item in enumerate(data):
+                if isinstance(item, dict):
+                    # For dict items in a list, show index if not at top level
+                    if indent_level > 0:
+                        md += f"{indent}- **Item {idx + 1}**:\n{self._json_to_markdown(item, indent_level + 1)}"
+                    else:
+                        # Top-level list items get special treatment
+                        md += self._json_to_markdown(item, indent_level)
+                elif isinstance(item, list):
+                    md += f"{indent}- **[{idx}]**:\n{self._json_to_markdown(item, indent_level + 1)}"
+                elif item is None:
+                    md += f"{indent}- `null`\n"
+                elif isinstance(item, bool):
+                    md += f"{indent}- `{str(item).lower()}`\n"
+                elif isinstance(item, (int, float)):
+                    md += f"{indent}- `{item}`\n"
+                else:
+                    md += f"{indent}- {item}\n"
+            return md
+            
         else:
-            return f"```json\n{json.dumps(data, indent=2)}\n```"
+            # Primitive values
+            if data is None:
+                return f"{indent}`null`\n"
+            elif isinstance(data, bool):
+                return f"{indent}`{str(data).lower()}`\n"
+            elif isinstance(data, (int, float)):
+                return f"{indent}`{data}`\n"
+            else:
+                return f"{indent}{data}\n"
 
     @on(Button.Pressed, "#btn_save_json")
     def save_json(self):
@@ -1004,21 +778,93 @@ class ResourceInputScreen(Screen):
 class HTBMCPApp(App):
     """The Textual Application."""
     
+    TITLE = "HackTheBox MCP Client"
+    
     CSS = """
+    /* HackTheBox Color Theme from settings.json */
     Screen {
         align: center middle;
+        background: #1A2332;
+    }
+    
+    * {
+        color: #A4B1CD;
     }
     
     #main_menu_container {
-        width: 40;
+        width: 75;
         height: auto;
-        border: heavy $accent;
+        border: heavy #9FEF00;
+        background: #1A2332;
         padding: 1 2;
+    }
+    
+    #main_menu_wrapper {
+        width: auto;
+        height: auto;
+    }
+    
+    #ascii_banner {
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1;
+        color: #9FEF00;
+    }
+    
+    #ids_display {
+        text-align: center;
+        width: 100%;
+        color: #5CB2FF;
     }
     
     Button {
         width: 100%;
         margin-bottom: 1;
+        border: solid #313F55;
+    }
+    
+    Button.-primary {
+        background: #5CB2FF;
+        color: #000000;
+        border: solid #7FC4FF;
+    }
+    
+    Button.-primary:hover {
+        background: #7FC4FF;
+        color: #000000;
+    }
+    
+    Button.-success {
+        background: #2EE7B6;
+        color: #000000;
+        border: solid #5CECC6;
+    }
+    
+    Button.-success:hover {
+        background: #5CECC6;
+        color: #000000;
+    }
+    
+    Button.-warning {
+        background: #FFAF00;
+        color: #000000;
+        border: solid #FFCC5C;
+    }
+    
+    Button.-warning:hover {
+        background: #FFCC5C;
+        color: #000000;
+    }
+    
+    Button.-error {
+        background: #FF3E3E;
+        color: #FFFFFF;
+        border: solid #FF8484;
+    }
+    
+    Button.-error:hover {
+        background: #FF8484;
+        color: #FFFFFF;
     }
     
     .screen_title {
@@ -1026,16 +872,111 @@ class HTBMCPApp(App):
         text-style: bold;
         margin: 1 0;
         width: 100%;
+        color: #9FEF00;
     }
     
     DataTable {
         height: 1fr;
-        border: solid $secondary;
+        border: heavy #9FEF00;
+        background: #1A2332;
+    }
+    
+    /* Column Headers - the titles row */
+    DataTable > .datatable--header {
+        background: #313F55;
+        color: #9FEF00;
+        text-style: bold;
+        border-bottom: wide #9FEF00;
+        height: 3;
+    }
+    
+    DataTable > .datatable--header-cell {
+        text-align: center;
+        text-style: bold;
+    }
+    
+    /* Data cells - should be normal size and centered */
+    DataTable > .datatable--cell {
+        text-align: center;
+    }
+    
+    /* Cursor (selected row) */
+    DataTable > .datatable--cursor {
+        background: #9FEF00 30%;
+        color: #FFFFFF;
+        text-style: bold;
+    }
+    
+    /* Alternating row colors - gray tones */
+    DataTable > .datatable--odd-row {
+        background: #313F55;
+    }
+    
+    DataTable > .datatable--even-row {
+        background: #1C2332;
+    }
+    
+    /* Alternative: use :odd and :even pseudo-classes */
+    DataTable > .datatable--row:odd {
+        background: #313F55;
+    }
+    
+    DataTable > .datatable--row:even {
+        background: #1C2332;
+    }
+    
+    DataTable > .datatable--fixed {
+        border-right: solid #313F55;
+    }
+    
+    /* Focused cursor */
+    DataTable:focus > .datatable--cursor {
+        background: #9FEF00;
+        color: #000000;
     }
     
     TextArea {
         height: 1fr;
-        border: solid $secondary;
+        border: heavy #9FEF00;
+        background: #1A2332;
+    }
+    
+    Input {
+        border: heavy #9FEF00;
+        background: #1A2332;
+    }
+    
+    Input:focus {
+        border: heavy #9FEF00;
+    }
+    
+    Select {
+        border: heavy #9FEF00;
+        background: #1A2332;
+    }
+    
+    Select:focus {
+        border: heavy #9FEF00;
+    }
+    
+    Markdown {
+        background: #1A2332;
+        color: #A4B1CD;
+    }
+    
+    Markdown H1, Markdown H2, Markdown H3 {
+        color: #9FEF00;
+        text-style: bold;
+    }
+    
+    Markdown Code {
+        background: #313F55;
+        color: #5CB2FF;
+    }
+    
+    Markdown CodeBlock {
+        background: #313F55;
+        color: #A4B1CD;
     }
     
     .buttons_row {
@@ -1052,11 +993,26 @@ class HTBMCPApp(App):
     
     .description {
         margin-bottom: 1;
-        color: $text-muted;
+        color: #5CB2FF;
     }
     
     .label {
         margin-top: 1;
+        color: #A4B1CD;
+    }
+    
+    Header {
+        background: #313F55;
+        color: #9FEF00;
+    }
+    
+    Footer {
+        background: #313F55;
+        color: #A4B1CD;
+    }
+    
+    Footer > .footer--key {
+        color: #9FEF00;
     }
     """
 
@@ -1069,25 +1025,8 @@ class HTBMCPApp(App):
         super().__init__()
         self.client = client
         self.selected_event = None  # Store selected CTF event
-        self.selected_challenge = None # Store selected Challenge
-        self.stored_challenges = None # Store loaded challenges data
 
     def on_mount(self):
-        # Try to load stored challenges
-        try:
-            challenges_path = self.client.output_dir / "challenges.json"
-            if challenges_path.exists():
-                with open(challenges_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # Create a mock result object to match what ChallengeSelectionScreen expects
-                    class MockResult:
-                        def __init__(self, data):
-                            self.content = [type("MockBlock", (), {"type": "text", "text": json.dumps(data)})]
-                            
-                    self.stored_challenges = MockResult(data)
-        except Exception as e:
-            print(f"Failed to load stored challenges: {e}")
-
         self.install_screen(MainMenu(), name="main_menu")
         self.install_screen(DataListScreen("Available Tools", "tools"), name="tools_list")
         self.install_screen(DataListScreen("Available Resources", "resources"), name="resources_list")
@@ -1098,6 +1037,18 @@ class HTBMCPApp(App):
 
 async def main():
     """Main entry point."""
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="HackTheBox MCP Client - Interactive TUI for HackTheBox Model Context Protocol",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '--version', '-v',
+        action='version',
+        version=f'HTB-MCP-Client v{__version__}'
+    )
+    args = parser.parse_args()
     
     # Load configuration
     config = dotenv_values()
