@@ -90,6 +90,10 @@ class HTBMCPClient:
         self.tools_cache = result.tools
         return self.tools_cache
 
+    async def get_tool_by_name(self, name: str) -> Optional[Tool]:
+        tools = await self.list_tools()
+        return next((t for t in tools if t.name == name), None)
+
     async def list_resources(self) -> List[Resource]:
         result = await self.session.list_resources()
         return result.resources
@@ -654,10 +658,10 @@ class GettingStartedScreen(ModalScreen):
             id="getting_started_container"
         )
 
-    def on_key(self):
+    def on_key(self, event):
         self.app.pop_screen()
 
-    def on_click(self):
+    def on_click(self, event):
         self.app.pop_screen()
 
 
@@ -780,7 +784,9 @@ async def main():
     config = dotenv_values()
     api_token = os.getenv("API_ACCESS_TOKEN") or config.get("API_ACCESS_TOKEN")
     url = os.getenv("HTB_MCP_URL") or config.get("HTB_MCP_URL", "https://mcp.hackthebox.ai/v1/ctf/mcp/")
-    if not api_token: sys.exit(1)
+    if not api_token:
+        print("Error: API_ACCESS_TOKEN not set. Please set it in .env or as an environment variable.")
+        sys.exit(1)
     headers = {"Authorization": f"Bearer {api_token}"}
     try:
         async with streamablehttp_client(url, headers=headers) as (read, write, _):
