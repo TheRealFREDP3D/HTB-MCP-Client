@@ -51,6 +51,15 @@ except ImportError:
     sys.exit(1)
 
 
+def extract_full_text(data: Any) -> str:
+    """Extract full text from data.content blocks."""
+    full_text = ""
+    if hasattr(data, "content") and isinstance(data.content, list):
+        for block in data.content:
+            full_text += block.text if hasattr(block, "text") else str(block)
+    return full_text
+
+
 class HTBMCPClient:
     def __init__(self, session: ClientSession):
         self.session = session
@@ -395,10 +404,7 @@ class ChallengeSelectionScreen(Screen):
     @work
     async def process_challenges(self):
         try:
-            full_text = ""
-            if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                for block in self.data.content:
-                    full_text += block.text if hasattr(block, "text") else str(block)
+            full_text = extract_full_text(self.data)
             parsed_json = json.loads(full_text)
             self.challenges_data = parsed_json.get("challenges", parsed_json) if isinstance(parsed_json, dict) else parsed_json
         except Exception:
@@ -554,10 +560,7 @@ class TeamSelectionScreen(Screen):
     @work
     async def process_teams(self):
         try:
-            full_text = ""
-            if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                for block in self.data.content:
-                    full_text += block.text if hasattr(block, "text") else str(block)
+            full_text = extract_full_text(self.data)
             self.teams_data = json.loads(full_text)
         except Exception:
             pass
@@ -601,10 +604,7 @@ class EventSelectionScreen(Screen):
     @work
     async def process_events(self):
         try:
-            full_text = ""
-            if hasattr(self.data, "content") and isinstance(self.data.content, list):
-                for block in self.data.content:
-                    full_text += block.text if hasattr(block, "text") else str(block)
+            full_text = extract_full_text(self.data)
             self.events_data = json.loads(full_text)
         except Exception:
             pass
