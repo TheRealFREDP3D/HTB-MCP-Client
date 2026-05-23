@@ -95,32 +95,41 @@ class ToolExecutionScreen(Screen):
         yield Footer()
 
     def on_mount(self):
+        self._setup_args_table()
+        self._apply_auto_exec_args()
+        self._maybe_auto_execute()
+
+    def _setup_args_table(self):
         try:
             table = self.query_one("#args_table")
             table.add_columns("Name", "Type", "Required", "Description")
             schema = self.tool.inputSchema
-            if schema and "properties" in schema:
-                properties = schema.get("properties", {})
-                required_list = schema.get("required", [])
-                for prop_name, prop_details in properties.items():
-                    prop_type = prop_details.get("type", "unknown")
-                    is_required = "Yes" if prop_name in required_list else "No"
-                    desc = prop_details.get("description", "")
-                    table.add_row(prop_name, prop_type, is_required, desc)
+            if not schema or "properties" not in schema:
+                return
+            properties = schema.get("properties", {})
+            required_list = schema.get("required", [])
+            for prop_name, prop_details in properties.items():
+                prop_type = prop_details.get("type", "unknown")
+                is_required = "Yes" if prop_name in required_list else "No"
+                desc = prop_details.get("description", "")
+                table.add_row(prop_name, prop_type, is_required, desc)
         except Exception:
             pass
 
-        if self.tool.name == "list_ctf_events" or self.auto_exec_args:
-            if self.auto_exec_args:
-                current_text = self.query_one("#args_input").text
-                try:
-                    current_json = json.loads(current_text)
-                    current_json.update(self.auto_exec_args)
-                    self.query_one("#args_input").load_text(json.dumps(current_json, indent=2))
-                except Exception:
-                    pass
-            if self.tool.name == "list_ctf_events":
-                self.execute_tool()
+    def _apply_auto_exec_args(self):
+        if not self.auto_exec_args:
+            return
+        try:
+            current_text = self.query_one("#args_input").text
+            current_json = json.loads(current_text)
+            current_json.update(self.auto_exec_args)
+            self.query_one("#args_input").load_text(json.dumps(current_json, indent=2))
+        except Exception:
+            pass
+
+    def _maybe_auto_execute(self):
+        if self.tool.name == "list_ctf_events":
+            self.execute_tool()
 
     def _generate_template_from_schema(self, schema: Dict[str, Any]) -> str:
         if not schema or "properties" not in schema:
