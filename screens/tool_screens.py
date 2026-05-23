@@ -3,6 +3,7 @@ HackTheBox MCP Client - Tool selection and execution screens
 """
 
 import json
+import logging
 from typing import Optional, Dict, Any
 
 from textual.app import ComposeResult
@@ -113,8 +114,8 @@ class ToolExecutionScreen(Screen):
                 is_required = "Yes" if prop_name in required_list else "No"
                 desc = prop_details.get("description", "")
                 table.add_row(prop_name, prop_type, is_required, desc)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Error setting up args table: {e}")
 
     def _apply_auto_exec_args(self):
         if not self.auto_exec_args:
@@ -124,8 +125,8 @@ class ToolExecutionScreen(Screen):
             current_json = json.loads(current_text)
             current_json.update(self.auto_exec_args)
             self.query_one("#args_input").load_text(json.dumps(current_json, indent=2))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Error applying auto-exec args: {e}")
 
     def _maybe_auto_execute(self):
         if self.tool.name == "list_ctf_events":
