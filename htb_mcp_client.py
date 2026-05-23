@@ -11,6 +11,7 @@ __license__ = "MIT"
 import asyncio
 import os
 import sys
+import traceback
 
 try:
     from mcp import ClientSession
@@ -42,8 +43,8 @@ async def main():
                 client_helper = HTBMCPClient(session)
                 app = HTBMCPApp(client_helper)
                 await app.run_async()
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
