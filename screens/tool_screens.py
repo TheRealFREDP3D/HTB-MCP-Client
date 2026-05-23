@@ -131,18 +131,43 @@ class ToolExecutionScreen(Screen):
         if self.tool.name == "list_ctf_events":
             self.execute_tool()
 
+    def _convert_id_to_type(self, id_value: Any, prop_type: str) -> Any:
+        """Convert ID value to the specified type."""
+        if prop_type == "integer":
+            return int(id_value)
+        return str(id_value)
+
+    def _try_get_event_id(self, prop_name: str, prop_type: str) -> Optional[Any]:
+        """Try to get event ID from context if property matches event fields."""
+        selected_event = getattr(self.app, "selected_event", None)
+        if not selected_event or "id" not in selected_event:
+            return None
+
+        if prop_name not in ["ctf_id", "id", "event_id"]:
+            return None
+
+        return self._convert_id_to_type(selected_event["id"], prop_type)
+
+    def _try_get_challenge_id(self, prop_name: str, prop_type: str) -> Optional[Any]:
+        """Try to get challenge ID from context if property matches challenge fields."""
+        selected_challenge = getattr(self.app, "selected_challenge", None)
+        if not selected_challenge or "id" not in selected_challenge:
+            return None
+
+        if prop_name not in ["challenge_id", "id"]:
+            return None
+
+        return self._convert_id_to_type(selected_challenge["id"], prop_type)
+
     def _get_context_value(self, prop_name: str, prop_type: str) -> Any:
         """Resolve property value from app context (selected event/challenge)."""
-        selected_event = getattr(self.app, "selected_event", None)
-        selected_challenge = getattr(self.app, "selected_challenge", None)
+        event_id = self._try_get_event_id(prop_name, prop_type)
+        if event_id is not None:
+            return event_id
 
-        if selected_event and prop_name in ["ctf_id", "id", "event_id"] and "id" in selected_event:
-            event_id = selected_event["id"]
-            return int(event_id) if prop_type == "integer" else str(event_id)
-
-        if selected_challenge and prop_name in ["challenge_id", "id"] and "id" in selected_challenge:
-            challenge_id = selected_challenge["id"]
-            return int(challenge_id) if prop_type == "integer" else str(challenge_id)
+        challenge_id = self._try_get_challenge_id(prop_name, prop_type)
+        if challenge_id is not None:
+            return challenge_id
 
         return None
 
