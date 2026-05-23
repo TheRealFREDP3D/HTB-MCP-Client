@@ -131,37 +131,53 @@ class ToolExecutionScreen(Screen):
         if self.tool.name == "list_ctf_events":
             self.execute_tool()
 
+    def _get_context_value(self, prop_name: str, prop_type: str) -> Any:
+        """Resolve property value from app context (selected event/challenge)."""
+        selected_event = getattr(self.app, "selected_event", None)
+        selected_challenge = getattr(self.app, "selected_challenge", None)
+
+        if selected_event and prop_name in ["ctf_id", "id", "event_id"] and "id" in selected_event:
+            event_id = selected_event["id"]
+            return int(event_id) if prop_type == "integer" else str(event_id)
+
+        if selected_challenge and prop_name in ["challenge_id", "id"] and "id" in selected_challenge:
+            challenge_id = selected_challenge["id"]
+            return int(challenge_id) if prop_type == "integer" else str(challenge_id)
+
+        return None
+
+    def _get_default_placeholder(self, prop_type: str, prop_details: Dict[str, Any]) -> Any:
+        """Return default value or type placeholder for a property."""
+        if "default" in prop_details:
+            return prop_details["default"]
+
+        mapping = {
+            "string": "<string>", "integer": 0, "number": 0.0,
+            "boolean": False, "array": [], "object": {}
+        }
+        return mapping.get(prop_type, "<value>")
+
+    def _resolve_property_value(self, prop_name: str, prop_details: Dict[str, Any]) -> Any:
+        """Determine the template value for a single schema property."""
+        if prop_name in self.auto_exec_args:
+            return self.auto_exec_args[prop_name]
+
+        prop_type = prop_details.get("type", "string")
+        context_value = self._get_context_value(prop_name, prop_type)
+        if context_value is not None:
+            return context_value
+
+        return self._get_default_placeholder(prop_type, prop_details)
+
     def _generate_template_from_schema(self, schema: Dict[str, Any]) -> str:
         if not schema or "properties" not in schema:
             return "{}"
 
         template = {}
         properties = schema.get("properties", {})
-        selected_event = getattr(self.app, "selected_event", None)
-        selected_challenge = getattr(self.app, "selected_challenge", None)
 
         for prop_name, prop_details in properties.items():
-            value_placeholder = None
-            prop_type = prop_details.get("type", "string")
-
-            if prop_name in self.auto_exec_args:
-                value_placeholder = self.auto_exec_args[prop_name]
-            elif selected_event and prop_name in ["ctf_id", "id", "event_id"] and "id" in selected_event:
-                event_id = selected_event["id"]
-                value_placeholder = int(event_id) if prop_type == "integer" else str(event_id)
-            elif selected_challenge and prop_name in ["challenge_id", "id"] and "id" in selected_challenge:
-                challenge_id = selected_challenge["id"]
-                value_placeholder = int(challenge_id) if prop_type == "integer" else str(challenge_id)
-            elif "default" in prop_details:
-                value_placeholder = prop_details["default"]
-            else:
-                mapping = {
-                    "string": "<string>", "integer": 0, "number": 0.0,
-                    "boolean": False, "array": [], "object": {}
-                }
-                value_placeholder = mapping.get(prop_type, "<value>")
-
-            template[prop_name] = value_placeholder
+            template[prop_name] = self._resolve_property_value(prop_name, prop_details)
 
         return json.dumps(template, indent=2)
 

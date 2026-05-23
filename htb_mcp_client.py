@@ -11,6 +11,7 @@ __license__ = "MIT"
 import asyncio
 import os
 import sys
+import traceback
 
 try:
     from mcp import ClientSession
@@ -44,6 +45,7 @@ async def main():
                 await app.run_async()
     except Exception as e:
         print(f"Error: {e}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
