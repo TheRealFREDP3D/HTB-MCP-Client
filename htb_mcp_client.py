@@ -43,8 +43,7 @@ async def main():
                 client_helper = HTBMCPClient(session)
                 app = HTBMCPApp(client_helper)
                 await app.run_async()
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
         traceback.print_exc()
 
 
